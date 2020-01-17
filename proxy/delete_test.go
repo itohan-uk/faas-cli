@@ -32,13 +32,11 @@ func Test_DeleteFunction_404(t *testing.T) {
 	s := test.MockHttpServerStatus(t, http.StatusNotFound)
 	defer s.Close()
 
-	stdout := test.CaptureStdout(func() {
-		DeleteFunction(s.URL, "function-to-delete", false, "")
-	})
+	err := DeleteFunction(s.URL, "function-to-delete", false, "")
 
 	r := regexp.MustCompile(`(?m:No existing function to remove)`)
-	if !r.MatchString(stdout) {
-		t.Fatalf("Want: %s, got: %s", "No existing function to remove", stdout)
+	if !r.MatchString(err.Error()) {
+		t.Fatalf("Want: %s, got: %s", "No existing function to remove", err.Error())
 	}
 }
 
@@ -46,13 +44,11 @@ func Test_DeleteFunction_Not2xxAnd404(t *testing.T) {
 	s := test.MockHttpServerStatus(t, http.StatusInternalServerError)
 	defer s.Close()
 
-	stdout := test.CaptureStdout(func() {
-		DeleteFunction(s.URL, "function-to-delete", false, "")
-	})
+	err := DeleteFunction(s.URL, "function-to-delete", false, "")
 
 	r := regexp.MustCompile(`(?m:Server returned unexpected status code)`)
-	if !r.MatchString(stdout) {
-		t.Fatalf("Output not matched: %s", stdout)
+	if !r.MatchString(err.Error()) {
+		t.Fatalf("Output not matched: %s", err.Error())
 	}
 }
 

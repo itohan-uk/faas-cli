@@ -68,7 +68,10 @@ func runDelete(cmd *cobra.Command, args []string) error {
 			function.Name = k
 			fmt.Printf("Deleting: %s.\n", function.Name)
 
-			proxy.DeleteFunctionToken(gatewayAddress, function.Name, tlsInsecure, token, functionNamespace)
+			err := proxy.DeleteFunctionToken(gatewayAddress, function.Name, tlsInsecure, token, functionNamespace)
+			if err != nil {
+				return err
+			}
 		}
 	} else {
 		if len(args) < 1 {
@@ -77,7 +80,10 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 		functionName = args[0]
 		fmt.Printf("Deleting: %s.\n", functionName)
-		proxy.DeleteFunctionToken(gatewayAddress, functionName, tlsInsecure, token, functionNamespace)
+		err := proxy.DeleteFunctionToken(gatewayAddress, functionName, tlsInsecure, token, functionNamespace)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
