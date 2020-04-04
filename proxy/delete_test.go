@@ -4,7 +4,7 @@
 package proxy
 
 import (
-	"fmt"
+	"context"
 	"net/http"
 
 	"testing"
@@ -18,8 +18,11 @@ func Test_DeleteFunction(t *testing.T) {
 	s := test.MockHttpServerStatus(t, http.StatusOK)
 	defer s.Close()
 
+	cliAuth := NewTestAuth(nil)
+	proxyClient := NewClient(cliAuth, s.URL, nil, &defaultCommandTimeout)
+
 	stdout := test.CaptureStdout(func() {
-		DeleteFunction(s.URL, "function-to-delete", false, "")
+		proxyClient.DeleteFunction(context.Background(), "function-to-delete", "")
 	})
 
 	r := regexp.MustCompile(`(?m:Removing old function.)`)
@@ -32,7 +35,12 @@ func Test_DeleteFunction_404(t *testing.T) {
 	s := test.MockHttpServerStatus(t, http.StatusNotFound)
 	defer s.Close()
 
-	err := DeleteFunction(s.URL, "function-to-delete", false, "")
+	cliAuth := NewTestAuth(nil)
+	proxyClient := NewClient(cliAuth, s.URL, nil, &defaultCommandTimeout)
+
+	stdout := test.CaptureStdout(func() {
+		proxyClient.DeleteFunction(context.Background(), "function-to-delete", "")
+	})
 
 	r := regexp.MustCompile(`(?m:No existing function to remove)`)
 	if !r.MatchString(err.Error()) {
@@ -44,22 +52,15 @@ func Test_DeleteFunction_Not2xxAnd404(t *testing.T) {
 	s := test.MockHttpServerStatus(t, http.StatusInternalServerError)
 	defer s.Close()
 
-	err := DeleteFunction(s.URL, "function-to-delete", false, "")
+	cliAuth := NewTestAuth(nil)
+	proxyClient := NewClient(cliAuth, s.URL, nil, &defaultCommandTimeout)
+
+	stdout := test.CaptureStdout(func() {
+		proxyClient.DeleteFunction(context.Background(), "function-to-delete", "")
+	})
 
 	r := regexp.MustCompile(`(?m:Server returned unexpected status code)`)
 	if !r.MatchString(err.Error()) {
 		t.Fatalf("Output not matched: %s", err.Error())
-	}
-}
-
-func Test_DeleteFunction_MissingURLPrefix(t *testing.T) {
-	url := "127.0.0.1:8080"
-
-	err := DeleteFunction(url, "function-to-delete", false, "")
-
-	expectedErrMsg := "first path segment in URL cannot contain colon"
-	r := regexp.MustCompile(fmt.Sprintf("(?m:%s)", expectedErrMsg))
-	if !r.MatchString(err.Error()) {
-		t.Fatalf("Want: %s\nGot: %s", expectedErrMsg, err.Error())
 	}
 }
