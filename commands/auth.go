@@ -31,6 +31,7 @@ var (
 	launchBrowser bool
 	grant         string
 	clientSecret  string
+	redirectHost  string
 )
 
 func init() {
@@ -40,9 +41,10 @@ func init() {
 	authCmd.Flags().IntVar(&listenPort, "listen-port", 31111, "OAuth2 local port for receiving cookie")
 	authCmd.Flags().StringVar(&audience, "audience", "", "OAuth2 audience")
 	authCmd.Flags().BoolVar(&launchBrowser, "launch-browser", true, "Launch browser for OAuth2 redirect")
+	authCmd.Flags().StringVar(&redirectHost, "redirect-host", "http://127.0.0.1", "Host for OAuth2 redirection in the implicit flow including URL scheme")
 
 	authCmd.Flags().StringVar(&scope, "scope", "openid profile", "scope for OAuth2 flow - i.e. \"openid profile\"")
-	authCmd.Flags().StringVar(&grant, "grant", "implicit", "grant for OAuth2 flow - either implicit or client_credentials")
+	authCmd.Flags().StringVar(&grant, "grant", "implicit", "grant for OAuth2 flow - either implicit, implicit-id or client_credentials")
 	authCmd.Flags().StringVar(&clientSecret, "client-secret", "", "OAuth2 client_secret, for use with client_credentials grant")
 
 	faasCmd.AddCommand(authCmd)
@@ -91,14 +93,16 @@ func checkValues(authURL, clientID string) error {
 
 func runAuth(cmd *cobra.Command, args []string) error {
 	if grant == "implicit" {
-		return authImplicit()
+		return authImplicit("token")
+	} else if grant == "implicit-id" {
+		return authImplicit("id_token")
 	} else if grant == "client_credentials" {
 		return authClientCredentials()
 	}
 	return nil
 }
 
-func authImplicit() error {
+func authImplicit(grant string) error {
 
 	context, cancel := context.WithCancel(context.TODO())
 	defer cancel()
@@ -130,11 +134,18 @@ func authImplicit() error {
 
 	q.Add("state", fmt.Sprintf("%d", time.Now().UnixNano()))
 	q.Add("nonce", fmt.Sprintf("%d", time.Now().UnixNano()))
-	q.Add("response_type", "token")
+	q.Add("response_type", grant)
 	q.Add("scope", scope)
+	q.Add("&response_mode", "fragment")
 	q.Add("audience", audience)
 
-	q.Add("redirect_uri", fmt.Sprintf("%s/oauth/callback", fmt.Sprintf("http://127.0.0.1:%d", listenPort)))
+	uri, err := makeRedirectURI(redirectHost, listenPort)
+	if err != nil {
+		return err
+	}
+
+	q.Add("redirect_uri", uri.String())
+
 	authURLVal, _ := url.Parse(authURL)
 	authURLVal.RawQuery = q.Encode()
 
@@ -151,6 +162,20 @@ func authImplicit() error {
 	<-context.Done()
 
 	return nil
+}
+
+func makeRedirectURI(host string, port int) (*url.URL, error) {
+	val := fmt.Sprintf("%s/oauth/callback", fmt.Sprintf("%s:%d", host, port))
+	res, err := url.Parse(val)
+
+	if err != nil {
+		return res, err
+	}
+
+	if st := res.String(); !(strings.HasPrefix(st, "http://") || strings.HasPrefix(st, "https://")) {
+		return res, fmt.Errorf("a scheme is required for the URL, i.e. http://")
+	}
+	return res, err
 }
 
 func authClientCredentials() error {
@@ -238,7 +263,10 @@ func makeCallbackHandler(cancel context.CancelFunc) func(w http.ResponseWriter, 
 				panic(errors.Wrap(err, "unable to parse fragment response from browser redirect"))
 			}
 
-			if token := q.Get("access_token"); len(token) > 0 {
+			// log.Println("QueryString:", q)
+
+			key := "id_token"
+			if token := q.Get(key); len(token) > 0 {
 
 				if err := config.UpdateAuthConfig(gateway, token, config.Oauth2AuthType); err != nil {
 					fmt.Printf("error while saving authentication token: %s", err.Error())
@@ -246,7 +274,7 @@ func makeCallbackHandler(cancel context.CancelFunc) func(w http.ResponseWriter, 
 				fmt.Println("credentials saved for", gateway)
 				printExampleTokenUsage(gateway, token)
 			} else {
-				fmt.Printf("Unable to detect a valid access_token in URL fragment. Check your credentials or contact your administrator.\n")
+				fmt.Printf("Unable to detect a valid %s in URL fragment. Check your credentials or contact your administrator.\n", key)
 			}
 
 			cancel()
